@@ -11,5 +11,7 @@ let package = Package(
         .executableTarget(name: "AirLock", dependencies: ["AirLockCore"],
                           swiftSettings: [.swiftLanguageMode(.v5)]),
         .testTarget(name: "AirLockCoreTests", dependencies: ["AirLockCore"]),
+        .testTarget(name: "AirLockTests", dependencies: ["AirLock", "AirLockCore"],
+                    swiftSettings: [.swiftLanguageMode(.v5)]),
     ]
 )

@@ -1,84 +1,90 @@
 import AppKit
 import ServiceManagement
 
-/// Menu bar app: one icon, a status line, an on/off switch, the log, Quit.
-final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let monitor = Monitor()
-    private let statusLine = NSMenuItem(title: "", action: nil, keyEquivalent: "")
-    private let warning = NSMenuItem(title: "", action: nil, keyEquivalent: "")
-    private let toggle = NSMenuItem(title: "Lock When I Walk Away", action: #selector(flip), keyEquivalent: "")
-    private let login = NSMenuItem(title: "Open at Login", action: #selector(flipLogin), keyEquivalent: "")
+    private let popover = NSPopover()
+    private let popup = PopupViewController()
 
     func applicationDidFinishLaunching(_ note: Notification) {
         Log.write("start")
         monitor.enabled = UserDefaults.standard.object(forKey: "enabled") as? Bool ?? true
         monitor.onChange = { [weak self] in self?.refresh() }
-
-        let menu = NSMenu()
-        menu.delegate = self
-        statusLine.isEnabled = false
-        warning.isEnabled = false
-        toggle.target = self
-        menu.addItem(statusLine)
-        menu.addItem(warning)
-        menu.addItem(.separator())
-        menu.addItem(toggle)
-        login.target = self
-        menu.addItem(login)
-        menu.addItem(withTitle: "Open Log", action: #selector(openLog), keyEquivalent: "").target = self
-        menu.addItem(.separator())
-        menu.addItem(withTitle: "Quit AirLock", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-        item.menu = menu
+        popover.behavior = .transient
+        popover.delegate = self
+        popover.contentViewController = popup
+        item.button?.target = self
+        item.button?.action = #selector(togglePopup)
+        item.button?.toolTip = "AirLock"
+        popup.onSettingsChange = { [weak self] in self?.monitor.applySettings($0) }
+        popup.onEnabledChange = { [weak self] in
+            self?.monitor.enabled = $0
+            UserDefaults.standard.set($0, forKey: "enabled")
+            Log.write($0 ? "turned on" : "turned off")
+        }
+        popup.onLoginChange = { [weak self] in self?.changeLogin(enabled: $0) }
+        popup.onOpenLog = { NSWorkspace.shared.open(Log.url) }
+        popup.onQuit = { NSApp.terminate(nil) }
         refresh()
     }
 
-    func menuWillOpen(_ menu: NSMenu) {
-        let immediate = SystemInfo.screenLockIsImmediate()
-        warning.title = "Turn on \"Require password immediately\" in Lock Screen settings"
-        warning.isHidden = immediate
+    @objc private func togglePopup() {
+        if popover.isShown {
+            popover.performClose(nil)
+            return
+        }
+        guard let button = item.button else { return }
         refresh()
+        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        NSApp.activate(ignoringOtherApps: true)
+        popover.contentViewController?.view.window?.makeKey()
+        monitor.refreshTarget()
+        DispatchQueue.global(qos: .utility).async {
+            let show = !SystemInfo.screenLockIsImmediate()
+            DispatchQueue.main.async { [weak self] in self?.popup.showPasswordWarning(show) }
+        }
+    }
+
+    func popoverDidClose(_ notification: Notification) {
+        popup.view.window?.endEditing(for: nil)
     }
 
     private func refresh() {
-        statusLine.title = monitor.status
-        toggle.state = monitor.enabled ? .on : .off
-        switch SMAppService.mainApp.status {
-        case .enabled: login.state = .on; login.title = "Open at Login"
-        case .requiresApproval: login.state = .mixed; login.title = "Open at Login (approve in Login Items)"
-        default: login.state = .off; login.title = "Open at Login"
-        }
+        popup.update(armed: monitor.armed, isEnabled: monitor.enabled, liveDevice: monitor.liveDevice,
+                     settings: monitor.settings, loginStatus: SMAppService.mainApp.status)
         let name = monitor.armed ? "lock.fill" : monitor.enabled ? "lock.open" : "lock.slash"
         item.button?.image = NSImage(systemSymbolName: name, accessibilityDescription: "AirLock")
     }
 
-    @objc private func flip() {
-        monitor.enabled.toggle()
-        UserDefaults.standard.set(monitor.enabled, forKey: "enabled")
-        Log.write(monitor.enabled ? "turned on" : "turned off")
-        refresh()
-    }
-
-    @objc private func flipLogin() {
+    private func changeLogin(enabled: Bool) {
         let service = SMAppService.mainApp
         do {
-            switch service.status {
-            case .enabled: try service.unregister(); Log.write("open at login off")
-            case .requiresApproval: SMAppService.openSystemSettingsLoginItems()
-            default: try service.register(); Log.write("open at login on")
+            if enabled {
+                if service.status == .requiresApproval {
+                    popover.performClose(nil)
+                    SMAppService.openSystemSettingsLoginItems()
+                } else {
+                    try service.register()
+                    if service.status == .requiresApproval {
+                        popover.performClose(nil)
+                        SMAppService.openSystemSettingsLoginItems()
+                    }
+                }
+            } else {
+                try service.unregister()
             }
+            Log.write("open at login \(enabled ? "on" : "off")")
         } catch {
             Log.write("open at login failed: \(error.localizedDescription)")
             let alert = NSAlert()
             alert.messageText = "Could not change Open at Login"
             alert.informativeText = error.localizedDescription
+            popover.performClose(nil)
             alert.runModal()
         }
-        if service.status == .requiresApproval { SMAppService.openSystemSettingsLoginItems() }
         refresh()
     }
-
-    @objc private func openLog(){ NSWorkspace.shared.open(Log.url) }
 }
 
 let app = NSApplication.shared

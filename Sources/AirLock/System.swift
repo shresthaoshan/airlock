@@ -51,20 +51,6 @@ enum Locker {
     }
 }
 
-enum Settings {
-    /// Rules from `defaults write com.shresthaoshan.airlock <key> <value>`; missing keys keep the default.
-    static func rules() -> Rules {
-        let d = UserDefaults.standard
-        var r = Rules()
-        if let v = d.object(forKey: "silenceSeconds") as? Double { r.silence = v }
-        if let v = d.object(forKey: "weakRSSI") as? Int { r.weakRSSI = v }
-        if let v = d.object(forKey: "weakSeconds") as? Double { r.weakFor = v }
-        if let v = d.object(forKey: "nearRSSI") as? Int { r.nearRSSI = v }
-        if let v = d.object(forKey: "nearSeconds") as? Double { r.nearFor = v }
-        return r
-    }
-}
-
 enum Log {
     static let url = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Logs/AirLock.log")

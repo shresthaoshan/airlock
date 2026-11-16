@@ -1,0 +1,5 @@
+autogen/
+**/autogen/
+.build/
+AirLock.app/
+.code-review-graph/

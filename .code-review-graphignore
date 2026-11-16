@@ -1,0 +1,5 @@
+.build/
+AirLock.app/
+graphify-out/
+autogen/
+**/autogen/

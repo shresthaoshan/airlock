@@ -13,11 +13,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         monitor.onChange = { [weak self] in self?.refresh() }
         popover.behavior = .transient
         popover.delegate = self
-        popover.contentViewController = popup
+        popup.attach(to: popover)
         item.button?.target = self
         item.button?.action = #selector(togglePopup)
         item.button?.toolTip = "AirLock"
         popup.onSettingsChange = { [weak self] in self?.monitor.applySettings($0) }
+        popup.onDeviceChange = { [weak self] in self?.monitor.selectDevice($0) }
+        popup.onPhoneChange = { [weak self] in self?.monitor.selectPhone($0) }
         popup.onEnabledChange = { [weak self] in
             self?.monitor.enabled = $0
             UserDefaults.standard.set($0, forKey: "enabled")
@@ -52,7 +54,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     private func refresh() {
         popup.update(armed: monitor.armed, isEnabled: monitor.enabled, liveDevice: monitor.liveDevice,
-                     settings: monitor.settings, loginStatus: SMAppService.mainApp.status)
+                     settings: monitor.settings, loginStatus: SMAppService.mainApp.status,
+                     source: monitor.source, nearbyPhones: monitor.nearbyPhones)
         let name = monitor.armed ? "lock.fill" : monitor.enabled ? "lock.open" : "lock.slash"
         item.button?.image = NSImage(systemSymbolName: name, accessibilityDescription: "AirLock")
     }

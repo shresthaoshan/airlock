@@ -8,8 +8,18 @@ final class PopupViewController: NSViewController, NSTextFieldDelegate {
     var onLoginChange: ((Bool) -> Void)?
     var onOpenLog: (() -> Void)?
     var onQuit: (() -> Void)?
+    var onDeviceChange: ((LockDevice) -> Void)?
+    var onPhoneChange: ((PhoneDevice?) -> Void)?
 
     private var settings = LockSettings()
+    private var source = LockSource()
+    private var phoneChoices: [PhoneDevice] = []
+    private weak var popover: NSPopover?
+    private var contentStack: NSStackView!
+    private let sourceMenu = NSPopUpButton(frame: .zero, pullsDown: false)
+    private let phoneMenu = NSPopUpButton(frame: .zero, pullsDown: false)
+    private let phoneNote = NSTextField(wrappingLabelWithString:
+        "Experimental. Select your iPhone from nearby Apple devices. If it stops being detected, select it again.")
     private let state = NSTextField(labelWithString: "Not armed")
     private let device = NSTextField(wrappingLabelWithString: "No live AirPods")
     private let enabled = NSButton(checkboxWithTitle: "Lock When I Walk Away", target: nil, action: nil)
@@ -31,6 +41,15 @@ final class PopupViewController: NSViewController, NSTextFieldDelegate {
         device.textColor = .secondaryLabelColor
         device.maximumNumberOfLines = 2
         device.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        sourceMenu.addItems(withTitles: ["AirPods", "iPhone (experimental)"])
+        sourceMenu.target = self
+        sourceMenu.action = #selector(changeDevice)
+        sourceMenu.setAccessibilityLabel("Device that controls locking")
+        phoneMenu.target = self
+        phoneMenu.action = #selector(changePhone)
+        phoneMenu.setAccessibilityLabel("Selected iPhone")
+        phoneNote.isHidden = true
+        phoneMenu.isHidden = true
         enabled.target = self
         enabled.action = #selector(changeEnabled)
         threshold.target = self
@@ -47,7 +66,7 @@ final class PopupViewController: NSViewController, NSTextFieldDelegate {
         delay.toolTip = "Enter a whole number from 0 to 30 seconds."
         login.target = self
         login.action = #selector(changeLogin)
-        for label in [noSignal, inputError, loginNote, warning] {
+        for label in [noSignal, inputError, loginNote, warning, phoneNote] {
             label.font = .systemFont(ofSize: 11)
             label.textColor = .secondaryLabelColor
         }
@@ -63,9 +82,11 @@ final class PopupViewController: NSViewController, NSTextFieldDelegate {
         let range = row([NSTextField(labelWithString: "−120 dBm"), NSTextField(labelWithString: "−20 dBm")])
         range.arrangedSubviews.forEach { ($0 as? NSTextField)?.textColor = .secondaryLabelColor }
         let delayRow = row([NSTextField(labelWithString: "Weak signal delay"), delay, NSTextField(labelWithString: "s")])
-        let stack = NSStackView(views: [title, state, device, separator(), enabled,
+        let sourceRow = row([NSTextField(labelWithString: "Lock device"), sourceMenu])
+        let stack = NSStackView(views: [title, sourceRow, phoneMenu, phoneNote, state, device, separator(), enabled,
                                       thresholdHeading, threshold, range, delayRow, inputError,
                                       noSignal, separator(), login, loginNote, warning, separator(), actions])
+        contentStack = stack
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 10
@@ -78,7 +99,7 @@ final class PopupViewController: NSViewController, NSTextFieldDelegate {
             stack.topAnchor.constraint(equalTo: view.topAnchor, constant: 18),
             stack.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -18)
         ])
-        for child in [device, thresholdHeading, threshold, range, delayRow, loginNote, warning, actions] as [NSView] {
+        for child in [sourceRow, phoneMenu, phoneNote, device, thresholdHeading, threshold, range, delayRow, loginNote, warning, actions] as [NSView] {
             child.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         }
     }
@@ -103,16 +124,41 @@ final class PopupViewController: NSViewController, NSTextFieldDelegate {
     }
 
     func update(armed: Bool, isEnabled: Bool, liveDevice: (name: String, rssi: Int)?,
-                settings: LockSettings, loginStatus: SMAppService.Status) {
+                settings: LockSettings, loginStatus: SMAppService.Status,
+                source: LockSource = LockSource(), nearbyPhones: [PhoneDevice] = []) {
         loadViewIfNeeded()
+        let changedSource = self.source != source
         self.settings = settings
+        self.source = source
+        sourceMenu.selectItem(at: source.device == .airPods ? 0 : 1)
+        phoneMenu.isHidden = source.device != .iPhone
+        phoneNote.isHidden = source.device != .iPhone
+        var choices = nearbyPhones
+        if let saved = source.phone, !choices.contains(where: { $0.id == saved.id }) { choices.insert(saved, at: 0) }
+        if choices != phoneChoices || phoneMenu.numberOfItems == 0 || changedSource {
+            phoneChoices = choices
+            phoneMenu.removeAllItems()
+            phoneMenu.addItem(withTitle: "Choose an iPhone…")
+            for phone in choices {
+                let duplicate = choices.filter { $0.name == phone.name }.count > 1
+                let suffix = duplicate ? " · \(phone.id.uuidString.prefix(6))" : ""
+                phoneMenu.addItem(withTitle: phone.name + suffix)
+            }
+            let selected = choices.firstIndex { $0.id == source.phone?.id }
+            phoneMenu.selectItem(at: selected.map { $0 + 1 } ?? 0)
+        }
         state.stringValue = armed ? "Armed" : "Not armed"
         state.textColor = armed ? .systemGreen : .secondaryLabelColor
-        device.stringValue = liveDevice.map { "\($0.name) · \($0.rssi) dBm" } ?? "No live AirPods"
+        let absent = source.device == .airPods ? "No live AirPods" : source.phone == nil ? "Select an iPhone to start." : "No live iPhone signal"
+        device.stringValue = liveDevice.map { "\($0.name) · \($0.rssi) dBm" } ?? absent
         enabled.state = isEnabled ? .on : .off
         threshold.integerValue = settings.threshold
         thresholdValue.stringValue = "\(settings.threshold) dBm"
-        if delay.currentEditor() == nil { delay.stringValue = String(settings.delay) }
+        if changedSource {
+            view.window?.makeFirstResponder(nil)
+            inputError.isHidden = true
+        }
+        if changedSource || delay.currentEditor() == nil { delay.stringValue = String(settings.delay) }
         noSignal.stringValue = "No-signal delay: \(settings.delay + 3) s"
         switch loginStatus {
         case .enabled: login.state = .on
@@ -129,9 +175,19 @@ final class PopupViewController: NSViewController, NSTextFieldDelegate {
         resizeToFit()
     }
 
+    func attach(to popover: NSPopover) {
+        self.popover = popover
+        popover.contentViewController = self
+        loadViewIfNeeded()
+        resizeToFit()
+    }
+
     private func resizeToFit() {
         view.layoutSubtreeIfNeeded()
-        preferredContentSize = view.fittingSize
+        // Measure the stack, not the root view whose frame is owned by NSPopover.
+        let size = NSSize(width: 336, height: ceil(contentStack.fittingSize.height) + 36)
+        if preferredContentSize != size { preferredContentSize = size }
+        if let popover, popover.contentSize != size { popover.contentSize = size }
     }
 
     @objc private func changeThreshold() {
@@ -157,6 +213,11 @@ final class PopupViewController: NSViewController, NSTextFieldDelegate {
     }
 
     @objc private func changeEnabled() { onEnabledChange?(enabled.state == .on) }
+    @objc private func changeDevice() { onDeviceChange?(sourceMenu.indexOfSelectedItem == 1 ? .iPhone : .airPods) }
+    @objc private func changePhone() {
+        let index = phoneMenu.indexOfSelectedItem - 1
+        onPhoneChange?(phoneChoices.indices.contains(index) ? phoneChoices[index] : nil)
+    }
     @objc private func changeLogin() { onLoginChange?(login.state != .off) }
     @objc private func openLog() { onOpenLog?() }
     @objc private func quit() { onQuit?() }

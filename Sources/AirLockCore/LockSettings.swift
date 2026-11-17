@@ -9,20 +9,22 @@ public struct LockSettings: Equatable, Sendable {
         self.delay = min(30, max(0, delay))
     }
 
-    public init(defaults: UserDefaults) {
+    public init(defaults: UserDefaults, device: LockDevice = .airPods) {
         func number(_ key: String, fallback: Double, range: ClosedRange<Double>, step: Double = 1) -> Int {
             guard let value = defaults.object(forKey: key) as? NSNumber,
                   value.doubleValue.isFinite else { return Int(fallback) }
             let bounded = min(range.upperBound, max(range.lowerBound, value.doubleValue))
             return Int((bounded / step).rounded() * step)
         }
-        self.init(threshold: number("weakRSSI", fallback: -70, range: -120 ... -20, step: 10),
-                  delay: number("weakSeconds", fallback: 5, range: 0 ... 30))
+        let phone = device == .iPhone
+        self.init(threshold: number(phone ? "iphoneWeakRSSI" : "weakRSSI", fallback: phone ? -60 : -70,
+                                    range: -120 ... -20, step: 10),
+                  delay: number(phone ? "iphoneWeakSeconds" : "weakSeconds", fallback: phone ? 10 : 5, range: 0 ... 30))
     }
 
-    public func save(to defaults: UserDefaults) {
-        defaults.set(threshold, forKey: "weakRSSI")
-        defaults.set(delay, forKey: "weakSeconds")
+    public func save(to defaults: UserDefaults, device: LockDevice = .airPods) {
+        defaults.set(threshold, forKey: device == .iPhone ? "iphoneWeakRSSI" : "weakRSSI")
+        defaults.set(delay, forKey: device == .iPhone ? "iphoneWeakSeconds" : "weakSeconds")
     }
 
     public var rules: Rules {

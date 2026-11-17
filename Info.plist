@@ -19,6 +19,6 @@
 	<key>LSUIElement</key>
 	<true/>
 	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>AirLock reads the signal of your AirPods to lock this Mac when you walk away.</string>
+	<string>AirLock reads Bluetooth signals from your selected AirPods or iPhone to lock this Mac when you walk away.</string>
 </dict>
 </plist>

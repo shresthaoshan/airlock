@@ -1,0 +1,88 @@
+name: Bug report
+description: Something in AirLock does not work as expected.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for the report. Please read the [known limitations](https://github.com/shresthaoshan/airlock#known-limitations) first.
+        The log (`~/Library/Logs/AirLock.log`) contains your device names. Remove them before you attach it.
+
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+      placeholder: "15.7"
+    validations:
+      required: true
+
+  - type: input
+    id: mac
+    attributes:
+      label: Mac model and lock device
+      placeholder: "MacBook Air M4, 2025, AirPods Pro 2"
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: AirLock version or commit
+      placeholder: "0.1.0 or 4e9b489"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where does the problem happen?
+      options:
+        - Locks while I am at the Mac (false lock)
+        - Does not lock when I walk away
+        - Does not arm
+        - AirPods not found
+        - iPhone list or iPhone mode
+        - Menu or settings
+        - Bluetooth permission
+        - Open at Login
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: settings
+    attributes:
+      label: Threshold and delay
+      placeholder: "-60 dBm, 5 s"
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Sit at the Mac with AirPods in.
+        2. Walk 3 m away.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected result
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual result
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Log lines
+      description: The lines from `~/Library/Logs/AirLock.log` around the problem. Remove device names first.
+      render: text

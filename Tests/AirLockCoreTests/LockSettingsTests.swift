@@ -17,7 +17,7 @@ struct LockSettingsTests {
         let name = "AirLockTests.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: name))
         defer { defaults.removePersistentDomain(forName: name) }
-        #expect(LockSettings(defaults: defaults) == LockSettings(threshold: -70, delay: 5))
+        #expect(LockSettings(defaults: defaults) == LockSettings(threshold: -60, delay: 5))
         defaults.set(-66, forKey: "weakRSSI")
         defaults.set(30, forKey: "weakSeconds")
         defaults.set(1, forKey: "silenceSeconds")
@@ -25,7 +25,7 @@ struct LockSettingsTests {
         let loaded = LockSettings(defaults: defaults)
         #expect(loaded.threshold == -70)
         #expect(loaded.rules.silence == 33)
-        #expect(loaded.rules.nearRSSI == -66)
+        #expect(loaded.rules.nearRSSI == -68)
         LockSettings(threshold: -100, delay: 0).save(to: defaults)
         #expect(LockSettings(defaults: defaults) == LockSettings(threshold: -100, delay: 0))
     }
@@ -69,7 +69,7 @@ struct LockSettingsTests {
 
     @Test(arguments: [-120, -20]) func armsAtBothSliderEndpoints(_ threshold: Int) {
         var d = Decider(rules: LockSettings(threshold: threshold, delay: 5).rules)
-        for t in 0...5 { _ = d.observe(rssi: threshold + 4, inEar: true, at: Double(t)) }
+        for t in 0...5 { _ = d.observe(rssi: threshold + 2, inEar: true, at: Double(t)) }
         #expect(d.armed)
     }
 }

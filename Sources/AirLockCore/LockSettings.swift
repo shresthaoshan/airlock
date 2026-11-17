@@ -4,7 +4,7 @@ public struct LockSettings: Equatable, Sendable {
     public let threshold: Int
     public let delay: Int
 
-    public init(threshold: Int = -70, delay: Int = 5) {
+    public init(threshold: Int = -60, delay: Int = 5) {
         self.threshold = Int((Double(min(-20, max(-120, threshold))) / 10).rounded()) * 10
         self.delay = min(30, max(0, delay))
     }
@@ -17,7 +17,7 @@ public struct LockSettings: Equatable, Sendable {
             return Int((bounded / step).rounded() * step)
         }
         let phone = device == .iPhone
-        self.init(threshold: number(phone ? "iphoneWeakRSSI" : "weakRSSI", fallback: phone ? -60 : -70,
+        self.init(threshold: number(phone ? "iphoneWeakRSSI" : "weakRSSI", fallback: -60,
                                     range: -120 ... -20, step: 10),
                   delay: number(phone ? "iphoneWeakSeconds" : "weakSeconds", fallback: phone ? 10 : 5, range: 0 ... 30))
     }
@@ -32,7 +32,7 @@ public struct LockSettings: Equatable, Sendable {
         rules.weakRSSI = threshold
         rules.weakFor = Double(delay)
         rules.silence = Double(delay + 3)
-        rules.nearRSSI = threshold + 4
+        rules.nearRSSI = threshold + 2
         return rules
     }
 }

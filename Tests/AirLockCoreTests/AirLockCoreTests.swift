@@ -115,17 +115,21 @@ let walk: [(Double, Int)] = [(0.1, -55), (0.5, -63), (0.7, -57), (1.6, -70), (1.
 
 struct RecordedWalkTests {
     @Test func locksOnlyAfterLeavingTheDesk() {
-        var d = Decider()
+        // The app's default AirPods settings, not the bare Rules() defaults.
+        var d = Decider(rules: LockSettings().rules)
         var locks: [Double] = []
+        var arms: [Double] = []
         var next = 0
         for step in 0...(95 * 4) {
             let t = Double(step) / 4
             while next < walk.count, walk[next].0 <= t {
-                _ = d.observe(rssi: walk[next].1, inEar: true, at: walk[next].0)
+                if d.observe(rssi: walk[next].1, inEar: true, at: walk[next].0) == .armed { arms.append(walk[next].0) }
                 next += 1
             }
             if case .lock = d.tick(at: t) { locks.append(t) }
         }
+        #expect(arms.first.map { $0 <= 20 } == true)                 // arms at the desk before you leave
+        #expect(arms.count == 2)                                    // and again after you come back
         #expect(locks.count == 1)                                   // no lock at the desk, before or after
         #expect(locks.allSatisfy { $0 > 20 && $0 <= 35 })           // at the 3 m spot, before the next room
     }

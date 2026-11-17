@@ -9,6 +9,10 @@ struct PopupTests {
         (view as? T).map { [$0] } ?? view.subviews.flatMap { controls($0, of: type) }
     }
 
+    private func radios(_ popup: PopupViewController) -> [NSButton] {
+        controls(popup.view, of: NSButton.self).filter { $0.action == Selector(("changePhone:")) }
+    }
+
     private func popup() -> PopupViewController {
         _ = NSApplication.shared
         let popup = PopupViewController()
@@ -75,17 +79,15 @@ struct PopupTests {
         popup.update(armed: false, isEnabled: true, liveDevice: nil,
                      settings: LockSettings(threshold: -60, delay: 10), loginStatus: .notRegistered,
                      source: LockSource(device: .iPhone, phone: phone), nearbyPhones: [])
-        let menus = controls(popup.view, of: NSPopUpButton.self)
-        let sourceMenu = try #require(menus.first { $0.itemTitles.contains("AirPods") })
-        let phoneMenu = try #require(menus.first { $0 !== sourceMenu })
-        #expect(sourceMenu.titleOfSelectedItem == "iPhone (experimental)")
-        #expect(phoneMenu.titleOfSelectedItem?.contains("Desk iPhone") == true)
-        #expect(!phoneMenu.isHidden)
+        let sourceControl = try #require(controls(popup.view, of: NSSegmentedControl.self).first)
+        #expect(sourceControl.selectedSegment == 1)
+        let radio = try #require(radios(popup).first)
+        #expect(radio.title == "Desk iPhone" && radio.state == .on)
         #expect(controls(popup.view, of: NSTextField.self).contains { $0.stringValue == "No live iPhone signal" })
         var selected: LockDevice?
         popup.onDeviceChange = { selected = $0 }
-        sourceMenu.selectItem(at: 0)
-        NSApp.sendAction(try #require(sourceMenu.action), to: sourceMenu.target, from: sourceMenu)
+        sourceControl.selectedSegment = 0
+        NSApp.sendAction(try #require(sourceControl.action), to: sourceControl.target, from: sourceControl)
         #expect(selected == .airPods)
     }
 
@@ -98,15 +100,13 @@ struct PopupTests {
                      source: LockSource(device: .iPhone), nearbyPhones: [first, second])
         #expect(controls(popup.view, of: NSTextField.self).contains { $0.stringValue == "Select an iPhone to start." })
         #expect(controls(popup.view, of: NSTextField.self).first { $0.isEditable }?.stringValue == "10")
-        let phoneMenu = try #require(controls(popup.view, of: NSPopUpButton.self).first { $0.itemTitles.contains("Choose an iPhone…") })
+        let list = radios(popup)
+        #expect(list.count == 2 && list.allSatisfy { $0.state == .off })
+        #expect(list[0].title != list[1].title)               // duplicate names get an ID suffix
         var selected: PhoneDevice?
         popup.onPhoneChange = { selected = $0 }
-        phoneMenu.selectItem(at: 2)
-        NSApp.sendAction(try #require(phoneMenu.action), to: phoneMenu.target, from: phoneMenu)
+        list[1].performClick(nil)
         #expect(selected == second)
-        phoneMenu.selectItem(at: 0)
-        NSApp.sendAction(try #require(phoneMenu.action), to: phoneMenu.target, from: phoneMenu)
-        #expect(selected == nil)
     }
 
     @Test func preservesIdentityWhenNearbyListChanges() throws {
@@ -120,56 +120,57 @@ struct PopupTests {
         popup.update(armed: true, isEnabled: true, liveDevice: (saved.name, -40),
                      settings: LockSettings(threshold: -60, delay: 10), loginStatus: .notRegistered,
                      source: source, nearbyPhones: [other, saved])
-        let menu = try #require(controls(popup.view, of: NSPopUpButton.self).first { $0.itemTitles.contains("Choose an iPhone…") })
         var selected: PhoneDevice?
         popup.onPhoneChange = { selected = $0 }
-        NSApp.sendAction(try #require(menu.action), to: menu.target, from: menu)
+        try #require(radios(popup).first { $0.state == .on }).performClick(nil)
         #expect(selected == saved)
         popup.update(armed: false, isEnabled: true, liveDevice: nil,
                      settings: LockSettings(threshold: -60, delay: 10), loginStatus: .notRegistered,
                      source: source, nearbyPhones: [other])
-        #expect(menu.titleOfSelectedItem == saved.name)
-        NSApp.sendAction(try #require(menu.action), to: menu.target, from: menu)
+        let checked = try #require(radios(popup).first { $0.state == .on })
+        #expect(checked.title == saved.name)
+        checked.performClick(nil)
         #expect(selected == saved)
     }
 
-    @Test func popoverSizeFollowsTheIPhoneLayout() {
+    @Test func menuItemSizeFollowsTheIPhoneLayout() {
         let popup = popup()
-        let popover = NSPopover()
-        popup.attach(to: popover)
+        let menu = NSMenu()
+        popup.attach(to: menu)
+        #expect(menu.items.count == 1)
+        #expect(menu.items.first?.view === popup.view)
         let phone = PhoneDevice(id: UUID(), name: "Desk iPhone")
         popup.update(armed: true, isEnabled: true, liveDevice: (phone.name, -40),
                      settings: LockSettings(threshold: -60, delay: 10), loginStatus: .notRegistered,
                      source: LockSource(device: .iPhone, phone: phone), nearbyPhones: [phone])
-        #expect(popover.contentSize == popup.preferredContentSize)
-        #expect(popover.contentSize.height >= popup.view.fittingSize.height)
+        #expect(popup.view.frame.size == popup.preferredContentSize)
+        #expect(popup.view.frame.height >= popup.view.fittingSize.height)
     }
 
-    @Test func signalUpdatesDoNotResizeThePopover() {
+    @Test func signalUpdatesDoNotResizeTheMenuItem() {
         let popup = popup()
-        let popover = NSPopover()
-        popup.attach(to: popover)
+        popup.attach(to: NSMenu())
         let phone = PhoneDevice(id: UUID(), name: "Desk iPhone")
         let source = LockSource(device: .iPhone, phone: phone)
         let settings = LockSettings(threshold: -60, delay: 10)
         popup.update(armed: true, isEnabled: true, liveDevice: (phone.name, -40),
                      settings: settings, loginStatus: .notRegistered, source: source, nearbyPhones: [phone])
-        let size = popover.contentSize
+        let size = popup.view.frame.size
         var changes = 0
-        let observation = popover.observe(\.contentSize, options: .new) { _, _ in changes += 1 }
+        let observation = NotificationCenter.default.addObserver(forName: NSView.frameDidChangeNotification, object: popup.view, queue: nil) { _ in changes += 1 }
         for rssi in [-39, -42, -41, -40] {
             popup.update(armed: true, isEnabled: true, liveDevice: (phone.name, rssi),
                          settings: settings, loginStatus: .notRegistered, source: source, nearbyPhones: [phone])
         }
-        #expect(popover.contentSize == size)
+        #expect(popup.view.frame.size == size)
         #expect(changes == 0)
-        withExtendedLifetime(observation) {}
+        NotificationCenter.default.removeObserver(observation)
         popup.update(armed: false, isEnabled: true, liveDevice: nil,
                      settings: LockSettings(), loginStatus: .notRegistered)
-        #expect(popover.contentSize.height < size.height)
-        #expect(popover.contentSize == popup.view.fittingSize)
+        #expect(popup.view.frame.height < size.height)
+        #expect(popup.view.frame.size == popup.view.fittingSize)
         popup.update(armed: true, isEnabled: true, liveDevice: (phone.name, -40),
                      settings: settings, loginStatus: .notRegistered, source: source, nearbyPhones: [phone])
-        #expect(popover.contentSize == size)
+        #expect(popup.view.frame.size == size)
     }
 }

@@ -33,8 +33,10 @@ final class Monitor: NSObject, CBCentralManagerDelegate {
         picker.startRSSI = min(-70, settings.threshold - 4)
         central = CBCentralManager(delegate: self, queue: .main)
         refreshTarget()
-        targetTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in self?.refreshTarget() }
-        tickTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in self?.tick() }
+        // Common modes: the timers must keep running while the menu is open (event tracking mode).
+        targetTimer = Timer(timeInterval: 60, repeats: true) { [weak self] _ in self?.refreshTarget() }
+        tickTimer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in self?.tick() }
+        for timer in [targetTimer!, tickTimer!] { RunLoop.main.add(timer, forMode: .common) }
     }
 
     var liveDevice: (name: String, rssi: Int)? {
@@ -134,7 +136,7 @@ final class Monitor: NSObject, CBCentralManagerDelegate {
         let bytes = data.map { [UInt8]($0) } ?? []
         let name = advertisementData[CBAdvertisementDataLocalNameKey] as? String ?? peripheral.name ?? ""
         if bytes.count >= 2, bytes[0] == 0x4C, bytes[1] == 0,
-           !(bytes.count > 2 && bytes[2] == 0x07), !name.isEmpty {
+           !(bytes.count > 2 && bytes[2] == 0x07), PhoneDevice.isCandidate(name: name, headphones: target?.name) {
             let phone = PhoneDevice(id: peripheral.identifier, name: name)
             let changed = observedPhones[phone.id]?.phone != phone
             observedPhones[phone.id] = (phone, now)

@@ -14,10 +14,11 @@ final class PopupViewController: NSViewController, NSTextFieldDelegate {
     private var settings = LockSettings()
     private var source = LockSource()
     private var phoneChoices: [PhoneDevice] = []
-    private weak var popover: NSPopover?
     private var contentStack: NSStackView!
-    private let sourceMenu = NSPopUpButton(frame: .zero, pullsDown: false)
-    private let phoneMenu = NSPopUpButton(frame: .zero, pullsDown: false)
+    // Inline controls only: a pop-up button cannot open its menu inside the status menu.
+    private let sourceControl = NSSegmentedControl(labels: ["AirPods", "iPhone (experimental)"],
+                                                   trackingMode: .selectOne, target: nil, action: nil)
+    private let phoneList = NSStackView()
     private let phoneNote = NSTextField(wrappingLabelWithString:
         "Experimental. Select your iPhone from nearby Apple devices. If it stops being detected, select it again.")
     private let state = NSTextField(labelWithString: "Not armed")
@@ -41,15 +42,15 @@ final class PopupViewController: NSViewController, NSTextFieldDelegate {
         device.textColor = .secondaryLabelColor
         device.maximumNumberOfLines = 2
         device.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        sourceMenu.addItems(withTitles: ["AirPods", "iPhone (experimental)"])
-        sourceMenu.target = self
-        sourceMenu.action = #selector(changeDevice)
-        sourceMenu.setAccessibilityLabel("Device that controls locking")
-        phoneMenu.target = self
-        phoneMenu.action = #selector(changePhone)
-        phoneMenu.setAccessibilityLabel("Selected iPhone")
+        sourceControl.target = self
+        sourceControl.action = #selector(changeDevice)
+        sourceControl.setAccessibilityLabel("Device that controls locking")
+        phoneList.orientation = .vertical
+        phoneList.alignment = .leading
+        phoneList.spacing = 4
+        phoneList.setAccessibilityLabel("Selected iPhone")
         phoneNote.isHidden = true
-        phoneMenu.isHidden = true
+        phoneList.isHidden = true
         enabled.target = self
         enabled.action = #selector(changeEnabled)
         threshold.target = self
@@ -82,8 +83,8 @@ final class PopupViewController: NSViewController, NSTextFieldDelegate {
         let range = row([NSTextField(labelWithString: "−120 dBm"), NSTextField(labelWithString: "−20 dBm")])
         range.arrangedSubviews.forEach { ($0 as? NSTextField)?.textColor = .secondaryLabelColor }
         let delayRow = row([NSTextField(labelWithString: "Weak signal delay"), delay, NSTextField(labelWithString: "s")])
-        let sourceRow = row([NSTextField(labelWithString: "Lock device"), sourceMenu])
-        let stack = NSStackView(views: [title, sourceRow, phoneMenu, phoneNote, state, device, separator(), enabled,
+        let sourceRow = row([NSTextField(labelWithString: "Lock device"), sourceControl])
+        let stack = NSStackView(views: [title, sourceRow, phoneList, phoneNote, state, device, separator(), enabled,
                                       thresholdHeading, threshold, range, delayRow, inputError,
                                       noSignal, separator(), login, loginNote, warning, separator(), actions])
         contentStack = stack
@@ -99,7 +100,7 @@ final class PopupViewController: NSViewController, NSTextFieldDelegate {
             stack.topAnchor.constraint(equalTo: view.topAnchor, constant: 18),
             stack.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -18)
         ])
-        for child in [sourceRow, phoneMenu, phoneNote, device, thresholdHeading, threshold, range, delayRow, loginNote, warning, actions] as [NSView] {
+        for child in [sourceRow, phoneList, phoneNote, device, thresholdHeading, threshold, range, delayRow, loginNote, warning, actions] as [NSView] {
             child.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         }
     }
@@ -130,22 +131,29 @@ final class PopupViewController: NSViewController, NSTextFieldDelegate {
         let changedSource = self.source != source
         self.settings = settings
         self.source = source
-        sourceMenu.selectItem(at: source.device == .airPods ? 0 : 1)
-        phoneMenu.isHidden = source.device != .iPhone
+        sourceControl.selectedSegment = source.device == .airPods ? 0 : 1
+        phoneList.isHidden = source.device != .iPhone
         phoneNote.isHidden = source.device != .iPhone
         var choices = nearbyPhones
         if let saved = source.phone, !choices.contains(where: { $0.id == saved.id }) { choices.insert(saved, at: 0) }
-        if choices != phoneChoices || phoneMenu.numberOfItems == 0 || changedSource {
+        if choices != phoneChoices || phoneList.arrangedSubviews.isEmpty || changedSource {
             phoneChoices = choices
-            phoneMenu.removeAllItems()
-            phoneMenu.addItem(withTitle: "Choose an iPhone…")
-            for phone in choices {
+            phoneList.arrangedSubviews.forEach { $0.removeFromSuperview() }
+            if choices.isEmpty {
+                let none = NSTextField(labelWithString: "No iPhones nearby.")
+                none.textColor = .secondaryLabelColor
+                phoneList.addArrangedSubview(none)
+            }
+            for (index, phone) in choices.enumerated() {
                 let duplicate = choices.filter { $0.name == phone.name }.count > 1
                 let suffix = duplicate ? " · \(phone.id.uuidString.prefix(6))" : ""
-                phoneMenu.addItem(withTitle: phone.name + suffix)
+                let radio = NSButton(radioButtonWithTitle: phone.name + suffix, target: self, action: #selector(changePhone(_:)))
+                radio.tag = index
+                phoneList.addArrangedSubview(radio)
             }
-            let selected = choices.firstIndex { $0.id == source.phone?.id }
-            phoneMenu.selectItem(at: selected.map { $0 + 1 } ?? 0)
+        }
+        for case let radio as NSButton in phoneList.arrangedSubviews {
+            radio.state = phoneChoices[radio.tag].id == source.phone?.id ? .on : .off
         }
         state.stringValue = armed ? "Armed" : "Not armed"
         state.textColor = armed ? .systemGreen : .secondaryLabelColor
@@ -175,19 +183,23 @@ final class PopupViewController: NSViewController, NSTextFieldDelegate {
         resizeToFit()
     }
 
-    func attach(to popover: NSPopover) {
-        self.popover = popover
-        popover.contentViewController = self
+    /// Shows the controls as the only item of a menu. Menu tracking keeps the menu bar
+    /// visible over full-screen apps; a popover does not.
+    func attach(to menu: NSMenu) {
         loadViewIfNeeded()
         resizeToFit()
+        let item = NSMenuItem()
+        item.view = view
+        menu.removeAllItems()
+        menu.addItem(item)
     }
 
     private func resizeToFit() {
         view.layoutSubtreeIfNeeded()
-        // Measure the stack, not the root view whose frame is owned by NSPopover.
+        // Measure the stack; the menu item takes its size from the root view's frame.
         let size = NSSize(width: 336, height: ceil(contentStack.fittingSize.height) + 36)
         if preferredContentSize != size { preferredContentSize = size }
-        if let popover, popover.contentSize != size { popover.contentSize = size }
+        if view.frame.size != size { view.setFrameSize(size) }
     }
 
     @objc private func changeThreshold() {
@@ -213,10 +225,10 @@ final class PopupViewController: NSViewController, NSTextFieldDelegate {
     }
 
     @objc private func changeEnabled() { onEnabledChange?(enabled.state == .on) }
-    @objc private func changeDevice() { onDeviceChange?(sourceMenu.indexOfSelectedItem == 1 ? .iPhone : .airPods) }
-    @objc private func changePhone() {
-        let index = phoneMenu.indexOfSelectedItem - 1
-        onPhoneChange?(phoneChoices.indices.contains(index) ? phoneChoices[index] : nil)
+    @objc private func changeDevice() { onDeviceChange?(sourceControl.selectedSegment == 1 ? .iPhone : .airPods) }
+    @objc private func changePhone(_ sender: NSButton) {
+        guard phoneChoices.indices.contains(sender.tag) else { return }
+        onPhoneChange?(phoneChoices[sender.tag])
     }
     @objc private func changeLogin() { onLoginChange?(login.state != .off) }
     @objc private func openLog() { onOpenLog?() }

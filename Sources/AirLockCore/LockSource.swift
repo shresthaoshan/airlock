@@ -13,6 +13,12 @@ public struct PhoneDevice: Equatable, Sendable {
         self.id = id
         self.name = name
     }
+
+    /// AirPods and Beats also send named Apple advertisements; they are not iPhone choices.
+    public static func isCandidate(name: String, headphones: String?) -> Bool {
+        guard !name.isEmpty, name != headphones else { return false }
+        return !["airpods", "beats"].contains { name.lowercased().contains($0) }
+    }
 }
 
 public struct LockSource: Equatable, Sendable {

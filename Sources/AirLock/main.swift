@@ -1,21 +1,19 @@
 import AppKit
 import ServiceManagement
 
-final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let monitor = Monitor()
-    private let popover = NSPopover()
+    private let menu = NSMenu()
     private let popup = PopupViewController()
 
     func applicationDidFinishLaunching(_ note: Notification) {
         Log.write("start")
         monitor.enabled = UserDefaults.standard.object(forKey: "enabled") as? Bool ?? true
         monitor.onChange = { [weak self] in self?.refresh() }
-        popover.behavior = .transient
-        popover.delegate = self
-        popup.attach(to: popover)
-        item.button?.target = self
-        item.button?.action = #selector(togglePopup)
+        menu.delegate = self
+        popup.attach(to: menu)
+        item.menu = menu
         item.button?.toolTip = "AirLock"
         popup.onSettingsChange = { [weak self] in self?.monitor.applySettings($0) }
         popup.onDeviceChange = { [weak self] in self?.monitor.selectDevice($0) }
@@ -31,16 +29,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         refresh()
     }
 
-    @objc private func togglePopup() {
-        if popover.isShown {
-            popover.performClose(nil)
-            return
-        }
-        guard let button = item.button else { return }
+    func menuWillOpen(_ menu: NSMenu) {
         refresh()
-        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-        NSApp.activate(ignoringOtherApps: true)
-        popover.contentViewController?.view.window?.makeKey()
         monitor.refreshTarget()
         DispatchQueue.global(qos: .utility).async {
             let show = !SystemInfo.screenLockIsImmediate()
@@ -48,7 +38,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
     }
 
-    func popoverDidClose(_ notification: Notification) {
+    func menuDidClose(_ menu: NSMenu) {
         popup.view.window?.endEditing(for: nil)
     }
 
@@ -65,12 +55,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         do {
             if enabled {
                 if service.status == .requiresApproval {
-                    popover.performClose(nil)
+                    menu.cancelTracking()
                     SMAppService.openSystemSettingsLoginItems()
                 } else {
                     try service.register()
                     if service.status == .requiresApproval {
-                        popover.performClose(nil)
+                        menu.cancelTracking()
                         SMAppService.openSystemSettingsLoginItems()
                     }
                 }
@@ -83,7 +73,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             let alert = NSAlert()
             alert.messageText = "Could not change Open at Login"
             alert.informativeText = error.localizedDescription
-            popover.performClose(nil)
+            menu.cancelTracking()
             alert.runModal()
         }
         refresh()

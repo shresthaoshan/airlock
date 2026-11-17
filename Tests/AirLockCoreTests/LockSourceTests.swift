@@ -53,4 +53,12 @@ struct LockSourceTests {
         defaults.set(Double.nan, forKey: "iphoneWeakSeconds")
         #expect(LockSettings(defaults: defaults, device: .iPhone) == LockSettings(threshold: -60, delay: 10))
     }
+
+    @Test func excludesHeadphonesFromIPhoneChoices() {
+        #expect(PhoneDevice.isCandidate(name: "Oshan’s iPhone", headphones: "Oshan’s AirPods Pro"))
+        #expect(!PhoneDevice.isCandidate(name: "Oshan’s AirPods Pro", headphones: nil))
+        #expect(!PhoneDevice.isCandidate(name: "Studio Buds", headphones: "Studio Buds"))
+        #expect(!PhoneDevice.isCandidate(name: "Powerbeats Pro", headphones: nil))
+        #expect(!PhoneDevice.isCandidate(name: "", headphones: nil))
+    }
 }

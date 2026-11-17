@@ -34,7 +34,7 @@ Controls, from top to bottom:
 | Control | Behavior |
 |---|---|
 | Title "AirLock" | 17 pt, semibold |
-| **Lock device** | Segmented control: "AirPods", "iPhone (experimental)" |
+| **Lock device** | Segmented control: "AirPods", "iPhone". The iPhone note marks iPhone mode as experimental. The short labels keep the row inside 336 pt on every macOS font setup |
 | iPhone list | iPhone mode only. One radio button for each nearby named Apple device, and for the saved iPhone when it is absent. Same names get an ID suffix (" · 1A2B3C"). Empty: "No iPhones nearby." |
 | iPhone note | iPhone mode only. "Experimental. Select your iPhone from nearby Apple devices. If it stops being detected, select it again." |
 | State | "Armed" in green, or "Not armed" in the secondary color |

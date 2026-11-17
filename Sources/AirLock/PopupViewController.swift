@@ -16,7 +16,7 @@ final class PopupViewController: NSViewController, NSTextFieldDelegate {
     private var phoneChoices: [PhoneDevice] = []
     private var contentStack: NSStackView!
     // Inline controls only: a pop-up button cannot open its menu inside the status menu.
-    private let sourceControl = NSSegmentedControl(labels: ["AirPods", "iPhone (experimental)"],
+    private let sourceControl = NSSegmentedControl(labels: ["AirPods", "iPhone"],
                                                    trackingMode: .selectOne, target: nil, action: nil)
     private let phoneList = NSStackView()
     private let phoneNote = NSTextField(wrappingLabelWithString:

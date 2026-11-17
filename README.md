@@ -110,7 +110,7 @@ A higher threshold (for example −50) locks sooner, closer to the Mac. A lower 
 
 ### iPhone (experimental)
 
-1. Select **iPhone (experimental)** in **Lock device**.
+1. Select **iPhone** in **Lock device**. The menu marks iPhone mode as experimental.
 2. Select your iPhone in the list of nearby devices.
 
 AirLock follows only that iPhone. It never chooses another device by name or by signal. If the iPhone stops being detected, select it again.

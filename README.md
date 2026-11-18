@@ -2,7 +2,8 @@
 
 Lock your Mac when you walk away. AirLock lives in the menu bar and follows the Bluetooth signal of your AirPods or your iPhone. When the signal becomes weak or stops, AirLock locks the Mac.
 
-**Website:** [airlock.shresthaoshan.com](https://airlock.shresthaoshan.com/)
+**Website:** [airlock.shresthaoshan.com](https://airlock.shresthaoshan.com/)  
+**Source:** [github.com/shresthaoshan/airlock](https://github.com/shresthaoshan/airlock)
 
 - No dependencies. Swift and AppKit only.
 - No pairing and no connection. AirLock only listens to Bluetooth LE advertisements.
